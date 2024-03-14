@@ -45,6 +45,14 @@ function safe_file_put_contents(string $filename, string $data) : void{
 	file_put_contents($filename, $data);
 }
 
+function safe_dir(string ...$paths) : string{
+	$path = implode("/", $paths);
+	if(!file_exists($path)){
+		mkdir($path, 0777, true);
+	}
+	return $path;
+}
+
 function make_releative(string $path, string $basePath) : string{
 	if(str_starts_with($path, $basePath)){
 		return substr($path, strlen($basePath));
@@ -52,8 +60,86 @@ function make_releative(string $path, string $basePath) : string{
 	return $path;
 }
 
+function prepare_virion(string $virionOwner, string $virionRepo, string|null $virionTree) : string{
+	if(empty($virionTree)){
+		$virionTree = "[git]";
+	}
+	echo "Preparing virion $virionOwner/$virionRepo@$virionTree\n";
 
-function infect_virion(string $pluginDir, array $pluginYml, string $virionDir) : void{
+	$virionDir = CACHE_DIR . "/$virionOwner-$virionRepo-$virionTree";
+	if(!file_exists($virionDir) || !is_dir($virionDir)){
+		$virionZipPath = CACHE_DIR . "/$virionOwner.$virionRepo.$virionTree.zip";
+		$virionDownloadUrl = "https://github.com/$virionOwner/$virionRepo/archive/$virionTree.zip";
+		echo "  - Downloading virion from $virionDownloadUrl\n";
+
+		$virionZipContents = @file_get_contents($virionDownloadUrl);
+		if($virionZipContents === false){
+			echo "  - Failed download zip from above url\n";
+			$gitUrl = "https://github.com/$virionOwner/$virionRepo.git";
+			echo "  - Try clone git from $gitUrl\n";
+			exec(
+				"git clone $gitUrl $virionDir"
+				. (PHP_OS_FAMILY === "Windows" ? " > NUL 2>&1" : " > /dev/null 2>&1")
+			);
+
+			if(!file_exists($virionDir)){
+				echo "  - Failed to download virion\n";
+				exit(1);
+			}
+			echo "  - Successfully cloned virion git to $virionDir\n";
+		}else{
+			file_put_contents($virionZipPath, $virionZipContents);
+			$virionZip = new ZipArchive();
+			$virionZip->open($virionZipPath);
+			$count = $virionZip->numFiles;
+			$zipPrefix = $virionZip->getNameIndex(0);
+			for($i = 0; $i < $count; $i++){
+				$name = $virionZip->getNameIndex($i);
+				if(str_ends_with($name, "/")){
+					continue;
+				}
+
+				safe_file_put_contents($virionDir . "/" . make_releative($name, $zipPrefix),
+					$virionZip->getFromName($name));
+			}
+			$virionZip->close();
+			unlink($virionZipPath);
+			echo "  - Successfully unzip virion zip to $virionDir\n";
+		}
+	}else{
+		echo "  - Using cached virion from $virionDir\n";
+	}
+
+	return $virionDir;
+}
+
+function infect_virion(string $targetDir, string $antibodyBase, string $virionDir, string $virionName) : void{
+	$poggitYmlPath = $virionDir . "/.poggit.yml";
+	if(!file_exists($poggitYmlPath)){
+		echo "  - FAILED : Not found .poggit.yml in $virionDir\n";
+		exit(1);
+	}
+
+	$poggitYml = yaml_parse(file_get_contents($poggitYmlPath));
+	if(!is_array($poggitYml)){
+		echo "  - FAILED : Invalid .poggit.yml in $virionDir\n";
+		exit(1);
+	}
+
+	if(!isset($poggitYml["projects"][$virionName])){
+		echo "  - FAILED : Not found virion in .poggit.yml in $virionDir\n";
+		exit(1);
+	}
+	$virionProject = $poggitYml["projects"][$virionName];
+	$virionPath = $virionProject["path"] ?: ".";
+	$virionDir = realpath($virionDir . "/" . $virionPath);
+	$virionLibs = [];
+	foreach($virionProject["libs"] ?? [] as $lib){
+		[$virionOwner, $virionRepo] = explode("/", $lib["src"]);
+		$virionTree = trim($lib["version"], "^~");
+		$virionLibs[] = [$virionOwner, $virionRepo, $virionTree];
+	}
+
 	/* Check to make sure virion.yml exists in the virion */
 	$virionYmlPath = $virionDir . "/virion.yml";
 	if(!file_exists($virionYmlPath)){
@@ -68,7 +154,7 @@ function infect_virion(string $pluginDir, array $pluginYml, string $virionDir) :
 	}
 
 	/* Infection Log. File that keeps all the virions injected into the plugin */
-	$infectionLogPath = $pluginDir . "/virus-infections.json";
+	$infectionLogPath = $targetDir . "/virus-infections.json";
 	$infectionLog = file_exists($infectionLogPath) ? json_decode(file_get_contents($infectionLogPath), true) : [];
 
 	/* Virion injection process now starts */
@@ -81,31 +167,36 @@ function infect_virion(string $pluginDir, array $pluginYml, string $virionDir) :
 		}
 	}
 	echo "  - Detect antigen: $antigen\n";
+	if(count($virionLibs) > 0){
+		echo "  - Detect libs: " . PHP_EOL;
+		foreach($virionLibs as [$virionOwner, $virionRepo, $virionTree]){
+			echo "    - $virionOwner/$virionRepo@$virionTree" . PHP_EOL;
+			$libVirionDir = prepare_virion($virionOwner, $virionRepo, $virionTree);
+			infect_virion($virionDir, $antigen, $libVirionDir, $virionRepo);
+		}
+	}
 
-	$main = $pluginYml["main"];
-	$antibody = substr($main, 0, -strlen(strrchr($main, "\\"))) . "\\libs\\" . $antigen;
+	$antibody = $antibodyBase . "\\libs\\" . $antigen;
 	$infectionLog[$antibody] = $virionYml;
 	echo "  - Detect antibody: $antibody\n";
 
-	echo "  - Change codes of plugin...";
+	echo "  - Infect antigen to antibody...";
 	/** @var SplFileInfo $fileInfo */
-	foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($pluginDir)) as $name => $fileInfo){
+	foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($targetDir)) as $name => $fileInfo){
 		if($fileInfo->isDir() || $fileInfo->getExtension() !== "php"){
 			continue;
 		}
 		file_put_contents($name, change_dna(file_get_contents($name), $antigen, $antibody));
 	}
-	echo "  - Done\n";
 
 	$restriction = clear_path("/src/" . $antigen) . "/";
 	$ligase = clear_path("/src/" . $antibody) . "/";
 
-	echo "  - Change codes of virion...";
 	foreach(scandir_recursive($virionDir) as $file){
 		$source = $virionDir . "/" . $file;
 		$contents = file_get_contents($source);
 		if(str_starts_with($file, "/resources/")){
-			file_put_contents($pluginDir . "/" . $file, $contents);
+			file_put_contents($targetDir . "/" . $file, $contents);
 		}elseif(str_starts_with($file, "/src/")){
 			if(!str_starts_with($file, $restriction)){
 				echo "Warning: File $file in virion is not under the antigen $antigen ($restriction)" . PHP_EOL;
@@ -115,7 +206,7 @@ function infect_virion(string $pluginDir, array $pluginYml, string $virionDir) :
 			}
 
 			safe_file_put_contents(
-				$pluginDir . $newRel,
+				$targetDir . $newRel,
 				change_dna($contents, $antigen, $antibody)
 			);
 		}
@@ -168,7 +259,7 @@ function change_dna(string $chromosome, string $antigen, string $antibody) : str
 	return $ret;
 }
 
-function build_phar(string $pharPath, string $pluginDir, array $pluginYml) : void{
+function build_phar(string $pharPath, array $pluginYml) : void{
 	$metadata = [
 		"name" => $pluginYml["name"],
 		"version" => $pluginYml["version"],
@@ -187,7 +278,7 @@ function build_phar(string $pharPath, string $pluginDir, array $pluginYml) : voi
 	$stub = sprintf(<<< STUB
 <?php
 echo "PocketMine-MP plugin %s v%s
-This file has been generated using PresentKim's pmmp-plugin-build script at %s
+This file has been generated using Github Action of PresentKim at %s
 ----------------
 %s
 ";
@@ -208,8 +299,8 @@ STUB, $metadata["name"], $metadata["version"], date("r"), implode("\n", $stubMet
 	$phar->setStub($stub);
 	$phar->setSignatureAlgorithm(Phar::SHA1);
 	$phar->startBuffering();
-	foreach(scandir_recursive($pluginDir) as $file){
-		$phar->addFile($pluginDir . "/" . $file, $file);
+	foreach(scandir_recursive(BUILD_DIR) as $file){
+		$phar->addFile(BUILD_DIR . "/" . $file, $file);
 	}
 	$phar->stopBuffering();
 }
@@ -219,17 +310,13 @@ if($argc < 2){
 	exit(1);
 }
 [, $baseDir] = $argv;
-$workDir = realpath(dirname(__DIR__, 2) . "/$baseDir");
-
-// Create cache directory if not exists
-$releaseDir = $workDir . "/.releases";
-$cacheDir = $releaseDir . "/cache";
-if(!file_exists($cacheDir) || !is_dir($cacheDir)){
-	mkdir($cacheDir, 0777, true);
-}
+define("WORK_DIR", clear_path(realpath(dirname(__DIR__, 2) . "/$baseDir")));
+define("RELEASE_DIR", safe_dir(WORK_DIR, ".releases"));
+define("CACHE_DIR", safe_dir(RELEASE_DIR, "cache"));
+define("BUILD_DIR", safe_dir(RELEASE_DIR, "plugin"));
 
 // Load cache mapping file
-$cacheJson = $releaseDir . "/releases.lock";
+$cacheJson = RELEASE_DIR . "/releases.lock";
 if(file_exists($cacheJson)){
 	$cache = json_decode(file_get_contents($cacheJson), true);
 }else{
@@ -237,7 +324,7 @@ if(file_exists($cacheJson)){
 }
 
 // Read plugin.yml file
-$pluginYml = $workDir . "/plugin.yml";
+$pluginYml = WORK_DIR . "/plugin.yml";
 if(!file_exists($pluginYml)){
 	echo "plugin.yml not found\n";
 	exit(1);
@@ -249,15 +336,14 @@ if($pluginYml === false){
 }
 
 // Copy work directory to release directory
-$pluginDir = $releaseDir . "/plugin";
-if(file_exists($pluginDir)){
-	rmdir_recursive($pluginDir);
+if(file_exists(BUILD_DIR)){
+	rmdir_recursive(BUILD_DIR);
 }
-mkdir($pluginDir, 0777, true);
-foreach(scandir_recursive($workDir) as $file){
+mkdir(BUILD_DIR, 0777, true);
+foreach(scandir_recursive(WORK_DIR) as $file){
 	safe_file_put_contents(
-		$pluginDir . "/" . $file,
-		file_get_contents($workDir . "/" . $file)
+		BUILD_DIR . "/" . $file,
+		file_get_contents(WORK_DIR . "/" . $file)
 	);
 }
 
@@ -275,45 +361,17 @@ foreach($virions as $virion){
 		exit(1);
 	}
 
-	if(empty($virionData[2])){
-		$virionData[2] = "main";
-	}
-	[$virionOwner, $virionRepo, $virionTree] = $virionData;
-	echo "Preparing virion $virionOwner/$virionRepo@$virionTree\n";
-
-	$virionDir = $cacheDir . "/$virionOwner-$virionRepo-$virionTree";
-	if(!file_exists($virionDir) || !is_dir($virionDir)){
-		echo "  - Downloading virion $virionOwner/$virionRepo@$virionTree\n";
-		$virionZipPath = $cacheDir . "/$virionOwner.$virionRepo.$virionTree.zip";
-		$virionDownloadUrl = "https://github.com/$virionOwner/$virionRepo/archive/$virionTree.zip";
-
-		file_put_contents($virionZipPath, file_get_contents($virionDownloadUrl));
-		$virionZip = new ZipArchive();
-		$virionZip->open($virionZipPath);
-		$count = $virionZip->numFiles;
-		$zipPrefix = $virionZip->getNameIndex(0);
-		for($i = 0; $i < $count; $i++){
-			$name = $virionZip->getNameIndex($i);
-			if(str_ends_with($name, "/")){
-				continue;
-			}
-
-			safe_file_put_contents($virionDir . "/" . make_releative($name, $zipPrefix),
-				$virionZip->getFromName($name));
-		}
-		$virionZip->close();
-		unlink($virionZipPath);
-		echo "  - Unzip virion to $virionDir\n";
-	}else{
-		echo "  - Using cached virion from $virionDir\n";
-	}
+	@[$virionOwner, $virionRepo, $virionTree] = $virionData;
+	$virionDir = prepare_virion($virionOwner, $virionRepo, $virionTree);
 
 	echo "  - Start virion infecting...\n";
-	infect_virion($pluginDir, $pluginYml, $virionDir);
+	$main = $pluginYml["main"];
+	$antibodyBase = substr($main, 0, -strlen(strrchr($main, "\\")));
+	infect_virion(BUILD_DIR, $antibodyBase, $virionDir, $virionRepo);
 }
 
 echo "\n";
 echo "Building phar...\n";
-build_phar($releaseDir . "/$pluginName-v$pluginVersion.phar", $pluginDir, $pluginYml);
+build_phar(RELEASE_DIR . "/$pluginName-v$pluginVersion.phar", $pluginYml);
 echo "Done in " . round(microtime(true) - $start, 3) . "s";
 exit(0);
