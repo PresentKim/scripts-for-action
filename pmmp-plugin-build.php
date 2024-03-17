@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-/** Recursively scan a directory and return all files */
+/** Scan all files that do not start with dot("."), including subdirectories */
 function scandir_recursive(string $dir, string $baseDir = "") : array{
 	$files = [];
 	$dirs = [];
@@ -21,6 +21,7 @@ function scandir_recursive(string $dir, string $baseDir = "") : array{
 	return array_merge(...$dirs);
 }
 
+/** Remove directory and its contents recursively */
 function rmdir_recursive($folderPath) : bool{
 	if(!is_dir($folderPath)){
 		return false;
@@ -36,16 +37,19 @@ function rmdir_recursive($folderPath) : bool{
 	return rmdir($folderPath);
 }
 
+/** Clear path separator */
 function clear_path(string $path) : string{
 	return rtrim(str_replace("\\", "/", $path), "/");
 }
 
+/** Save file contents safely, creating directories if not exists */
 function safe_file_put_contents(string $filename, string $data) : void{
 	@mkdir(dirname($filename), 0777, true);
 	file_put_contents($filename, $data);
 }
 
-function safe_dir(string ...$paths) : string{
+/** Create directory safely, creating directories if not exists */
+function safe_path_join(string ...$paths) : string{
 	$path = implode("/", $paths);
 	if(!file_exists($path)){
 		mkdir($path, 0777, true);
@@ -53,6 +57,7 @@ function safe_dir(string ...$paths) : string{
 	return $path;
 }
 
+/** Make path relative to base path */
 function make_releative(string $path, string $basePath) : string{
 	if(str_starts_with($path, $basePath)){
 		return substr($path, strlen($basePath));
@@ -308,9 +313,9 @@ if($argc < 2){
 }
 [, $baseDir] = $argv;
 define("WORK_DIR", clear_path(realpath(dirname(__DIR__, 2) . "/$baseDir")));
-define("RELEASE_DIR", safe_dir(WORK_DIR, ".releases"));
-define("CACHE_DIR", safe_dir(RELEASE_DIR, "cache"));
-define("BUILD_DIR", safe_dir(RELEASE_DIR, "plugin"));
+define("RELEASE_DIR", safe_path_join(WORK_DIR, ".releases"));
+define("CACHE_DIR", safe_path_join(RELEASE_DIR, "cache"));
+define("BUILD_DIR", safe_path_join(RELEASE_DIR, "plugin"));
 
 // Load cache mapping file
 $cacheJson = RELEASE_DIR . "/releases.lock";
