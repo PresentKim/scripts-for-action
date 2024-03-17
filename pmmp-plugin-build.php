@@ -114,30 +114,27 @@ function prepare_virion(string $virionOwner, string $virionRepo, string|null $vi
 }
 
 function infect_virion(string $targetDir, string $antibodyBase, string $virionDir, string $virionName) : void{
-	$poggitYmlPath = $virionDir . "/.poggit.yml";
-	if(!file_exists($poggitYmlPath)){
-		echo "  - FAILED : Not found .poggit.yml in $virionDir\n";
-		exit(1);
-	}
-
-	$poggitYml = yaml_parse(file_get_contents($poggitYmlPath));
-	if(!is_array($poggitYml)){
-		echo "  - FAILED : Invalid .poggit.yml in $virionDir\n";
-		exit(1);
-	}
-
-	if(!isset($poggitYml["projects"][$virionName])){
-		echo "  - FAILED : Not found virion in .poggit.yml in $virionDir\n";
-		exit(1);
-	}
-	$virionProject = $poggitYml["projects"][$virionName];
-	$virionPath = $virionProject["path"] ?: ".";
-	$virionDir = realpath($virionDir . "/" . $virionPath);
 	$virionLibs = [];
-	foreach($virionProject["libs"] ?? [] as $lib){
-		[$virionOwner, $virionRepo] = explode("/", $lib["src"]);
-		$virionTree = trim($lib["version"], "^~");
-		$virionLibs[] = [$virionOwner, $virionRepo, $virionTree];
+	$poggitYmlPath = $virionDir . "/.poggit.yml";
+	if(file_exists($poggitYmlPath)){
+		$poggitYml = yaml_parse(file_get_contents($poggitYmlPath));
+		if(!is_array($poggitYml)){
+			echo "  - FAILED : Invalid .poggit.yml in $virionDir\n";
+			exit(1);
+		}
+
+		if(!isset($poggitYml["projects"][$virionName])){
+			echo "  - FAILED : Not found virion in .poggit.yml in $virionDir\n";
+			exit(1);
+		}
+		$virionProject = $poggitYml["projects"][$virionName];
+		$virionPath = $virionProject["path"] ?: ".";
+		$virionDir = realpath($virionDir . "/" . $virionPath);
+		foreach($virionProject["libs"] ?? [] as $lib){
+			[$virionOwner, $virionRepo] = explode("/", $lib["src"]);
+			$virionTree = trim($lib["version"], "^~");
+			$virionLibs[] = [$virionOwner, $virionRepo, $virionTree];
+		}
 	}
 
 	/* Check to make sure virion.yml exists in the virion */
