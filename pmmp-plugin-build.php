@@ -308,7 +308,7 @@ STUB, $metadata["name"], $metadata["version"], date("r"), implode("\n", $stubMet
 }
 
 $baseDir = $argv[1] ?? ".";
-define("WORK_DIR", clear_path(realpath(dirname(__DIR__, 2) . "/$baseDir")));
+define("WORK_DIR", clear_path(realpath(getcwd() . "/$baseDir")));
 define("RELEASE_DIR", safe_path_join(WORK_DIR, ".releases"));
 define("CACHE_DIR", safe_path_join(RELEASE_DIR, "cache"));
 define("BUILD_DIR", safe_path_join(RELEASE_DIR, "plugin"));
