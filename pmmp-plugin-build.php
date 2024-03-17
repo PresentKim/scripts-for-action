@@ -42,12 +42,6 @@ function clear_path(string $path) : string{
 	return rtrim(str_replace("\\", "/", $path), "/");
 }
 
-/** Save file contents safely, creating directories if not exists */
-function safe_file_put_contents(string $filename, string $data) : void{
-	@mkdir(dirname($filename), 0777, true);
-	file_put_contents($filename, $data);
-}
-
 /** Create directory safely, creating directories if not exists */
 function safe_path_join(string ...$paths) : string{
 	$path = implode("/", $paths);
@@ -104,8 +98,12 @@ function prepare_virion(string $virionOwner, string $virionRepo, string|null $vi
 					continue;
 				}
 
-				safe_file_put_contents($virionDir . "/" . make_releative($name, $zipPrefix),
-					$virionZip->getFromName($name));
+				$path = $virionDir . "/" . make_releative($name, $zipPrefix);
+				$dir = dirname($path);
+				if(!file_exists($dir)){
+					mkdir($dir, 0777, true);
+				}
+				file_put_contents($path, $virionZip->getFromName($name));
 			}
 			$virionZip->close();
 			unlink($virionZipPath);
@@ -207,10 +205,12 @@ function infect_virion(string $targetDir, string $antibodyBase, string $virionDi
 				$newRel = $ligase . make_releative($file, $restriction);
 			}
 
-			safe_file_put_contents(
-				$targetDir . $newRel,
-				change_dna($contents, $antigen, $antibody)
-			);
+			$path = $targetDir . $newRel;
+			$dir = dirname($path);
+			if(!file_exists($dir)){
+				mkdir($dir, 0777, true);
+			}
+			file_put_contents($path, change_dna($contents, $antigen, $antibody));
 		}
 	}
 	echo "  - Done\n";
@@ -339,10 +339,12 @@ if(file_exists(BUILD_DIR)){
 }
 mkdir(BUILD_DIR, 0777, true);
 foreach(scandir_recursive(WORK_DIR) as $file){
-	safe_file_put_contents(
-		BUILD_DIR . "/" . $file,
-		file_get_contents(WORK_DIR . "/" . $file)
-	);
+	$path = BUILD_DIR . "/$file";
+	$dir = dirname($path);
+	if(!file_exists($dir)){
+		mkdir($dir, 0777, true);
+	}
+	copy(WORK_DIR . "/$file", $path);
 }
 
 $start = microtime(true);
