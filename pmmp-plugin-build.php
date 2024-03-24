@@ -59,6 +59,30 @@ function make_releative(string $path, string $basePath) : string{
 	return $path;
 }
 
+function parsePoggitYml(string $poggitYmlPath, string $name, string $projectDir) : array{
+	$poggitYml = yaml_parse(file_get_contents($poggitYmlPath));
+	if(!is_array($poggitYml)){
+		echo "  - FAILED : Invalid .poggit.yml in $projectDir\n";
+		exit(1);
+	}
+
+	$project = $poggitYml["projects"][$name] ?? array_pop($poggitYml["projects"]);
+	if(!is_array($project)){
+		echo "  - FAILED : Invalid project in .poggit.yml in $projectDir\n";
+		exit(1);
+	}
+
+	$projectPath = $project["path"] ?: ".";
+	$projectDir = realpath($projectDir . "/" . $projectPath);
+	$projectLibs = [];
+	foreach($project["libs"] ?? [] as $lib){
+		[$owner, $repo] = explode("/", $lib["src"]);
+		$tree = trim($lib["version"], "^~");
+		$projectLibs[] = [$owner, $repo, $tree];
+	}
+	return [$projectDir, $projectLibs];
+}
+
 function prepare_virion(string $virionOwner, string $virionRepo, string|null $virionTree) : string{
 	if(empty($virionTree)){
 		$virionTree = "[git]";
@@ -120,24 +144,7 @@ function infect_virion(string $targetDir, string $antibodyBase, string $virionDi
 	$virionLibs = [];
 	$poggitYmlPath = $virionDir . "/.poggit.yml";
 	if(file_exists($poggitYmlPath)){
-		$poggitYml = yaml_parse(file_get_contents($poggitYmlPath));
-		if(!is_array($poggitYml)){
-			echo "  - FAILED : Invalid .poggit.yml in $virionDir\n";
-			exit(1);
-		}
-
-		if(!isset($poggitYml["projects"][$virionName])){
-			echo "  - FAILED : Not found virion in .poggit.yml in $virionDir\n";
-			exit(1);
-		}
-		$virionProject = $poggitYml["projects"][$virionName];
-		$virionPath = $virionProject["path"] ?: ".";
-		$virionDir = realpath($virionDir . "/" . $virionPath);
-		foreach($virionProject["libs"] ?? [] as $lib){
-			[$virionOwner, $virionRepo] = explode("/", $lib["src"]);
-			$virionTree = trim($lib["version"], "^~");
-			$virionLibs[] = [$virionOwner, $virionRepo, $virionTree];
-		}
+		[$virionDir, $virionLibs] = parsePoggitYml($poggitYmlPath, $virionName, $virionDir);
 	}
 
 	/* Check to make sure virion.yml exists in the virion */
@@ -307,8 +314,14 @@ STUB, $metadata["name"], $metadata["version"], date("r"), implode("\n", $stubMet
 	$phar->stopBuffering();
 }
 
-$baseDir = $argv[1] ?? ".";
-define("WORK_DIR", clear_path(realpath(getcwd() . "/$baseDir")));
+$baseDir = clear_path(realpath(getcwd() . "/" . ($argv[1] ?? ".")));
+$poggitYml = $baseDir . "/.poggit.yml";
+if(file_exists($poggitYml)){
+	[$baseDir, $virions] = parsePoggitYml($poggitYml, "", $baseDir);
+}else{
+	$virions = [];
+}
+define("WORK_DIR", $baseDir);
 define("RELEASE_DIR", safe_path_join(WORK_DIR, ".releases"));
 define("CACHE_DIR", safe_path_join(RELEASE_DIR, "cache"));
 define("BUILD_DIR", safe_path_join(RELEASE_DIR, "plugin"));
@@ -350,18 +363,22 @@ foreach(scandir_recursive(WORK_DIR) as $file){
 $start = microtime(true);
 $pluginName = $pluginYml["name"];
 $pluginVersion = $pluginYml["version"];
-$virions = $pluginYml["virions"] ?? [];
+if(isset($pluginYml["virions"])){
+	$virions = [];
+	foreach($pluginYml["virions"] as $virion){
+		$virionData = explode("/", $virion);
+		if(empty($virionData[1])){
+			echo "Invalid virion format: $virion\n";
+			exit(1);
+		}
+		$virions[] = $virionData;
+	}
+}
 echo "Processing $pluginName v$pluginVersion\n";
 
 foreach($virions as $virion){
 	echo "\n";
-	$virionData = explode("/", $virion);
-	if(empty($virionData[1])){
-		echo "Invalid virion format: $virion\n";
-		exit(1);
-	}
-
-	@[$virionOwner, $virionRepo, $virionTree] = $virionData;
+	@[$virionOwner, $virionRepo, $virionTree] = $virion;
 	$virionDir = prepare_virion($virionOwner, $virionRepo, $virionTree);
 
 	echo "  - Start virion infecting...\n";
