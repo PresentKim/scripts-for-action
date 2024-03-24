@@ -140,7 +140,7 @@ function prepare_virion(string $virionOwner, string $virionRepo, string|null $vi
 	return $virionDir;
 }
 
-function infect_virion(string $targetDir, string $antibodyBase, string $virionDir, string $virionName) : void{
+function infect_virion(string $targetDir, string $antibodyBase, string $virionDir, string $virionName, string $sreNamespacePrefix = "") : void{
 	$virionLibs = [];
 	$poggitYmlPath = $virionDir . "/.poggit.yml";
 	if(file_exists($poggitYmlPath)){
@@ -197,7 +197,7 @@ function infect_virion(string $targetDir, string $antibodyBase, string $virionDi
 	}
 
 	$restriction = clear_path("/src/" . $antigen) . "/";
-	$ligase = clear_path("/src/" . $antibody) . "/";
+	$ligase = clear_path("/src/" . make_releative($antibody, $sreNamespacePrefix)). "/";
 
 	foreach(scandir_recursive($virionDir) as $file){
 		$source = $virionDir . "/" . $file;
@@ -384,7 +384,7 @@ foreach($virions as $virion){
 	echo "  - Start virion infecting...\n";
 	$main = $pluginYml["main"];
 	$antibodyBase = substr($main, 0, -strlen(strrchr($main, "\\")));
-	infect_virion(BUILD_DIR, $antibodyBase, $virionDir, $virionRepo);
+	infect_virion(BUILD_DIR, $antibodyBase, $virionDir, $virionRepo, $pluginYml["src-namespace-prefix"] ?? "");
 }
 
 echo "\n";
