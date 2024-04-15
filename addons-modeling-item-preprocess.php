@@ -122,29 +122,19 @@ echo "-- MODEL GROUP : $modelGroup\n\n\n";
  * Load template files...
  */
 const GEOMETRY = "geometry";
-const GEOMETRY_PREFIX = "/models/entity/";
-const GEOMETRY_SUFFIX = ".geo.json";
-const GEOMETRY_PATH = GEOMETRY_PREFIX . "%s" . GEOMETRY_SUFFIX;
+const GEOMETRY_PATH = "/models/entity/%s.geo.json";
 
 const ATTACHABLE = "attachable";
-const ATTACHABLE_PREFIX = "/attachables/";
-const ATTACHABLE_SUFFIX = ".attachable.json";
-const ATTACHABLE_PATH = ATTACHABLE_PREFIX . "%s" . ATTACHABLE_SUFFIX;
+const ATTACHABLE_PATH = "/attachables/%s.attachable.json";
 
 const TEXTURE = "item texture";
-const TEXTURE_PREFIX = "/textures/tools/";
-const TEXTURE_SUFFIX = ".png";
-const TEXTURE_PATH = TEXTURE_PREFIX . "%s" . TEXTURE_SUFFIX;
+const TEXTURE_PATH = "/textures/tools/%s.png";
 
 const ICON = "item icon";
-const ICON_PREFIX = "/textures/items/";
-const ICON_SUFFIX = ".icon.png";
-const ICON_PATH = ICON_PREFIX . "%s" . TEXTURE_SUFFIX;
+const ICON_PATH = "/textures/items/%s.png";
 
 const BEHAVIOR_PART = "behavior part";
-const BEHAVIOR_PREFIX = "/.behavior/";
-const BEHAVIOR_SUFFIX = ".json";
-const BEHAVIOR_PART_PATH = BEHAVIOR_PREFIX . "%s" . BEHAVIOR_SUFFIX;
+const BEHAVIOR_PART_PATH = "/.bp/items/%s.behavior.json";
 
 const ITEM_TEXTURE_PATH = "/textures/item_texture.json";
 
@@ -241,11 +231,11 @@ if(!file_exists($templateDir) || !is_dir($templateDir)){
 }
 
 $templates = [];
-safe_path_join(WORK_DIR . GEOMETRY_PREFIX);
-safe_path_join(WORK_DIR . ATTACHABLE_PREFIX);
-safe_path_join(WORK_DIR . TEXTURE_PREFIX);
-safe_path_join(WORK_DIR . ICON_PREFIX);
-safe_path_join(WORK_DIR . BEHAVIOR_PREFIX);
+safe_path_join(WORK_DIR . "/models/entity/");
+safe_path_join(WORK_DIR . "/attachables/");
+safe_path_join(WORK_DIR . "/textures/tools/");
+safe_path_join(WORK_DIR . "/textures/items/");
+safe_path_join(WORK_DIR . "/.behavior/");
 
 function processResource(string $type, string $input, string $output, Closure $closure) : void{
     if(!file_exists($input)){
@@ -266,20 +256,22 @@ function processResource(string $type, string $input, string $output, Closure $c
     }
 }
 
-$templateMap = [];
+
+$behaviorDir = WORK_DIR . "/.bp";
 $meterialMap = [];
 foreach(scandir_recursive($templateDir) as $innerPath){
-    if(!str_ends_with($innerPath, GEOMETRY_SUFFIX)){
+    // /geometry/$name.json
+    if(!preg_match("/^\/geometry\/(.+?)\.json$/", $innerPath, $matches)){
         continue;
     }
 
-    $name = str_replace([GEOMETRY_SUFFIX, "/", "\\"], "", $innerPath);
+    $name = $matches[1];
     echo "│\n";
     echo "├──── $name\n";
 
     processResource(
         GEOMETRY,
-        $templateDir . "/" . $name . GEOMETRY_SUFFIX,
+        $templateDir . "/geometry/$name.json",
         sprintf(WORK_DIR . GEOMETRY_PATH, $name),
         static function($input, $output) use ($modelGroup, $defaults, &$meterialMap, $name){
             $base = file_get_json($defaults[GEOMETRY]);
@@ -300,14 +292,14 @@ foreach(scandir_recursive($templateDir) as $innerPath){
 
     processResource(
         TEXTURE,
-        $templateDir . "/" . $name . TEXTURE_SUFFIX,
+        $templateDir . "/texture/$name.png",
         sprintf(WORK_DIR . TEXTURE_PATH, $name),
         copy(...)
     );
 
     processResource(
         ICON,
-        $templateDir . "/" . $name . ICON_SUFFIX,
+        $templateDir . "/icon/$name.png",
         sprintf(WORK_DIR . ICON_PATH, $name),
         static function($input, $output) use ($defaults, $name){
             $source = imagecreatefrompng($input);
@@ -388,16 +380,18 @@ foreach(scandir_recursive($templateDir) as $innerPath){
         }
     );
 
-    processResource(
-        BEHAVIOR_PART,
-        $templateDir . "/.behavior.json",
-        sprintf(WORK_DIR . BEHAVIOR_PART_PATH, $name),
-        static function($input, $output) use ($identifier, $name){
-            $behavior = file_get_contents($input);
-            $behavior = str_replace($identifier, $name, $behavior);
-            file_put_contents($output, $behavior);
-        }
-    );
+    if(file_exists($behaviorDir)){
+        processResource(
+            BEHAVIOR_PART,
+            $behaviorDir . "/items/$identifier.behavior.json",
+            sprintf(WORK_DIR . BEHAVIOR_PART_PATH, $name),
+            static function($input, $output) use ($identifier, $name){
+                $behavior = file_get_contents($input);
+                $behavior = str_replace($identifier, $name, $behavior);
+                file_put_contents($output, $behavior);
+            }
+        );
+    }
 }
 echo "└──────────────────────────────────────────────────────────\n\n";
 
