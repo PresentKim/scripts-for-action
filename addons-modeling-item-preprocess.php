@@ -137,6 +137,8 @@ const BEHAVIOR_PART = "behavior part";
 const BEHAVIOR_PART_PATH = "/.bp/items/%s.behavior.json";
 
 const ITEM_TEXTURE_PATH = "/textures/item_texture.json";
+const RP_MANIFEST_PATH = "/manifest.json";
+const BP_MANIFEST_PATH = "/.bp/manifest.json";
 
 $defaults = [
     GEOMETRY => WORK_DIR . sprintf(GEOMETRY_PATH, $identifier),
@@ -393,6 +395,42 @@ foreach(scandir_recursive($templateDir) as $innerPath){
         );
     }
 }
+echo "└──────────────────────────────────────────────────────────\n\n";
+
+/**
+ * Bump manifest version...
+ */
+echo "┌ BUMP MANIFEST VERSION ────────────────────────────────────\n";
+echo "│\n";
+$rpManaifestFile = WORK_DIR . RP_MANIFEST_PATH;
+if(!file_exists($rpManaifestFile) || !is_file($rpManaifestFile)){
+    echo "├── missing resource pack manifest : " . WORK_DIR . RP_MANIFEST_PATH . "\n";
+    echo "└──────────────────────────────────────────────────────────\n\n";
+    exit(1);
+}
+
+$rpManifest = file_get_json($rpManaifestFile);
+$rpManifest["header"]["version"][2]++;
+$version = $rpManifest["header"]["version"];
+foreach($rpManifest["modules"] as &$module){
+    $module["version"] = $version;
+}
+unset($module);
+file_put_json($rpManaifestFile, $rpManifest);
+echo "├──── Bump rp version to " . implode(".", $version) . "\n";
+
+$bpManaifestFile = WORK_DIR . BP_MANIFEST_PATH;
+if(file_exists($bpManaifestFile) ** is_file($bpManaifestFile)){
+    $bpManifest = file_get_json($bpManaifestFile);
+    $bpManifest["header"]["version"] = $version;
+    foreach($bpManifest["modules"] as &$module){
+        $module["version"] = $version;
+    }
+    unset($module);
+    file_put_json($bpManaifestFile, $bpManifest);
+    echo "├──── Bump bp version to " . implode(".", $version) . "\n";
+}
+
 echo "└──────────────────────────────────────────────────────────\n\n";
 
 echo "done.\n";
