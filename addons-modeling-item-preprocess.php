@@ -237,7 +237,10 @@ safe_path_join(WORK_DIR . "/models/entity/");
 safe_path_join(WORK_DIR . "/attachables/");
 safe_path_join(WORK_DIR . "/textures/tools/");
 safe_path_join(WORK_DIR . "/textures/items/");
-safe_path_join(WORK_DIR . "/.behavior/");
+safe_path_join($templateDir . "/geometry/");
+safe_path_join($templateDir . "/icon/");
+safe_path_join($templateDir . "/texture/");
+safe_path_join(WORK_DIR . "/.bp/");
 
 function processResource(string $type, string $input, string $output, Closure $closure) : void{
     if(!file_exists($input)){
