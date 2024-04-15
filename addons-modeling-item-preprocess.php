@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-
 /** Scan all files that do not start with dot("."), including subdirectories */
 function scandir_recursive(string $dir, string $baseDir = "") : array{
 	$files = [];
@@ -94,11 +93,30 @@ function imagefirstcolorat(GdImage $image, int $start, int $end, int $step, int 
 	return $start;
 }
 
+$options = getopt("ht:i:m:", ["help", "target:", "identifer:", "model:"], $rest);
 
-$baseDir = $argv[1] ?? ".";
-$default = $argv[2] ?? "default_tools";
-$modelGroup = $argv[3] ?? $default;
-define("WORK_DIR", clear_path(realpath(getcwd() . "/$baseDir")));
+if(isset($options["h"]) || isset($options["help"])){
+	echo "Usage: php $argv[0] [options]\n";
+	echo "Options:\n";
+	echo "  -h, --help\t\tShow this help message\n";
+	echo "  -t, --target\t\tTarget directory, default is '.'(current directory)\n";
+	echo "  -i, --identifer\t\tBase identifier of template, default is 'default_tools'\n";
+	echo "  -m, --model\t\tModel group name, default is the same as the identifier\n";
+	exit(0);
+}
+
+$argv = array_slice($argv, $rest);
+$targetDir = $options["t"] ?? $options["target"] ?? array_shift($argv) ?: ".";
+$identifier = $options["i"] ?? $options["identifer"] ?? array_shift($argv) ?: "default_tools";
+$modelGroup = $options["m"] ?? $options["model"] ?? array_shift($argv) ?: $identifier;
+
+define("WORK_DIR", clear_path(realpath(getcwd() . "/$targetDir")));
+
+
+echo "-- TARGET DIR : $targetDir\n";
+echo "-- WORK DIR : " . WORK_DIR . "\n";
+echo "-- IDENTIFIER : $identifier\n";
+echo "-- MODEL GROUP : $modelGroup\n\n\n";
 
 /**
  * Load template files...
@@ -131,8 +149,8 @@ const BEHAVIOR_PART_PATH = BEHAVIOR_PREFIX . "%s" . BEHAVIOR_SUFFIX;
 const ITEM_TEXTURE_PATH = "/textures/item_texture.json";
 
 $defaults = [
-	GEOMETRY => WORK_DIR . sprintf(GEOMETRY_PATH, $default),
-	ATTACHABLE => WORK_DIR . sprintf(ATTACHABLE_PATH, $default),
+	GEOMETRY => WORK_DIR . sprintf(GEOMETRY_PATH, $identifier),
+	ATTACHABLE => WORK_DIR . sprintf(ATTACHABLE_PATH, $identifier),
 	TEXTURE => WORK_DIR . ITEM_TEXTURE_PATH,
 ];
 echo "┌ LOAD DEFAULT FILES ────────────────────────────────────\n";
@@ -199,13 +217,13 @@ echo "│\n";
 echo "├── check default animations...\n";
 foreach(ANIMATION_MAP as $key){
 	echo "├──── ";
-	if(isset($animations[sprintf($key, $default)])){
+	if(isset($animations[sprintf($key, $identifier)])){
 		echo "found";
 	}else{
 		echo "missing";
 	}
 
-	echo " : " . sprintf($key, $default) . "\n";
+	echo " : " . sprintf($key, $identifier) . "\n";
 }
 echo "└──────────────────────────────────────────────────────────\n\n";
 
@@ -349,15 +367,15 @@ foreach(scandir_recursive($templateDir) as $innerPath){
 		ATTACHABLE,
 		$defaults[ATTACHABLE],
 		sprintf(WORK_DIR . ATTACHABLE_PATH, $name),
-		static function($input, $output) use ($animations, $meterialMap, $default, $name){
+		static function($input, $output) use ($animations, $meterialMap, $identifier, $name){
 			$attachable = file_get_json($input);
 			$attachableIdentifer = &$attachable["minecraft:attachable"]["description"]["identifier"];
-			$attachableIdentifer = str_replace($default, $name, $attachableIdentifer);
+			$attachableIdentifer = str_replace($identifier, $name, $attachableIdentifer);
 			$attachableTextures = &$attachable["minecraft:attachable"]["description"]["textures"]["default"];
-			$attachableTextures = str_replace($default, $name, $attachableTextures);
+			$attachableTextures = str_replace($identifier, $name, $attachableTextures);
 			$attachable["minecraft:attachable"]["description"]["materials"]["default"] = $meterialMap[$name];
 			$attachableGeometry = &$attachable["minecraft:attachable"]["description"]["geometry"]["default"];
-			$attachableGeometry = str_replace($default, $name, $attachableGeometry);
+			$attachableGeometry = str_replace($identifier, $name, $attachableGeometry);
 			$attachableAnimations = &$attachable["minecraft:attachable"]["description"]["animations"];
 			foreach(ANIMATION_MAP as $k => $v){
 				$animationName = sprintf($v, $name);
@@ -374,9 +392,9 @@ foreach(scandir_recursive($templateDir) as $innerPath){
 		BEHAVIOR_PART,
 		$templateDir . "/.behavior.json",
 		sprintf(WORK_DIR . BEHAVIOR_PART_PATH, $name),
-		static function($input, $output) use ($default, $name){
+		static function($input, $output) use ($identifier, $name){
 			$behavior = file_get_contents($input);
-			$behavior = str_replace($default, $name, $behavior);
+			$behavior = str_replace($identifier, $name, $behavior);
 			file_put_contents($output, $behavior);
 		}
 	);
