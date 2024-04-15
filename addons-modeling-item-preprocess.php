@@ -99,9 +99,9 @@ if(isset($options["h"]) || isset($options["help"])){
     echo "Usage: php $argv[0] [options]\n";
     echo "Options:\n";
     echo "  -h, --help\t\tShow this help message\n";
-    echo "  -t, --target\t\tTarget directory, default is '.'(current directory)\n";
-    echo "  -i, --identifer\t\tBase identifier of template, default is 'default_tools'\n";
-    echo "  -m, --model\t\tModel group name, default is the same as the identifier\n";
+    echo "  -t, --target \<dir\>\t\tTarget directory, default is '.'(current directory)\n";
+    echo "  -i, --identifer \<identifer\>\t\tBase identifier of template, default is 'default_tools'\n";
+    echo "  -m, --model \<model\>\t\tModel group name, default is the same as the identifier\n";
     exit(0);
 }
 
