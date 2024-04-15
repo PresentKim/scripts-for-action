@@ -97,6 +97,7 @@ function imagefirstcolorat(GdImage $image, int $start, int $end, int $step, int 
 
 $baseDir = $argv[1] ?? ".";
 $default = $argv[2] ?? "default_tools";
+$modelGroup = $argv[3] ?? $default;
 define("WORK_DIR", clear_path(realpath(getcwd() . "/$baseDir")));
 
 /**
@@ -262,7 +263,7 @@ foreach(scandir_recursive($templateDir) as $innerPath){
 		GEOMETRY,
 		$templateDir . "/" . $name . GEOMETRY_SUFFIX,
 		sprintf(WORK_DIR . GEOMETRY_PATH, $name),
-		static function($input, $output) use ($default, $defaults, &$meterialMap, $name){
+		static function($input, $output) use ($modelGroup, $defaults, &$meterialMap, $name){
 			$base = file_get_json($defaults[GEOMETRY]);
 			$geometry = file_get_json($input);
 
@@ -270,7 +271,7 @@ foreach(scandir_recursive($templateDir) as $innerPath){
 			$base["minecraft:geometry"][0]["description"] = $geometry["minecraft:geometry"][0]["description"];
 			foreach($geometry["minecraft:geometry"][0]["bones"] as $bone){
 				if(!isset($bone["parent"])){
-					$bone["parent"] = $default;
+					$bone["parent"] = $modelGroup;
 				}
 				$base["minecraft:geometry"][0]["bones"][] = $bone;
 			}
