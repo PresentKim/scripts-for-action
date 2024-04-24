@@ -2,6 +2,17 @@
 
 declare(strict_types=1);
 
+const IGNORE_FILES = [
+    "README.md",
+    "BUILDING.md",
+    "SECURITY.md",
+    "CONFIGURATION.md",
+    "composer.json",
+    "composer.lock",
+    "phpstan.neon.dist",
+    "phpstan-baseline.neon",
+];
+
 /** Scan all files that do not start with dot("."), including subdirectories */
 function scandir_recursive(string $dir, string $baseDir = "") : array{
     $files = [];
@@ -270,7 +281,7 @@ function change_dna(string $chromosome, string $antigen, string $antibody) : str
     return $ret;
 }
 
-function build_phar(string $pharPath, array $pluginYml) : void{
+function build_phar(string $pharPath, array $pluginYml, array $ignoreFiles) : void{
     $metadata = [
         "name" => $pluginYml["name"],
         "version" => $pluginYml["version"],
@@ -311,12 +322,31 @@ STUB, $metadata["name"], $metadata["version"], date("r"), implode("\n", $stubMet
     $phar->setSignatureAlgorithm(Phar::SHA1);
     $phar->startBuffering();
     foreach(scandir_recursive(BUILD_DIR) as $file){
+        foreach($ignoreFiles as $ignoreFile){
+            if(str_ends_with($file, $ignoreFile)){
+                continue 2;
+            }
+        }
         $phar->addFile(BUILD_DIR . "/" . $file, $file);
     }
     $phar->stopBuffering();
 }
 
-$baseDir = clear_path(realpath(getcwd() . "/" . ($argv[1] ?? ".")));
+$firstArg = $argv[1] ?? "";
+if($firstArg === "?" || strtolower($firstArg) === "help"){
+    echo "Usage: php $argv[0] [project dir] [ignore files]\n";
+    echo "  - project dir: The directory where the plugin is located\n";
+    echo "      - default: ./\n";
+    echo "  - ignore files: Files to ignore when building the plugin. Separate multiple files with commas\n";
+    echo "      - default: README.md, BUILDING.md, SECURITY.md, CONFIGURATION.md, composer.json, composer.lock, phpstan.neon.dist, phpstan-baseline.neon\n";
+    exit(0);
+}
+
+$baseDir = clear_path(realpath(getcwd() . "/" . ($firstArg === "" ? "." : $firstArg)));
+$ignoreFiles = array_map("trim", array_slice($argv, 2));
+if(count($ignoreFiles) === 0){
+    $ignoreFiles = IGNORE_FILES;
+}
 $poggitYml = $baseDir . "/.poggit.yml";
 if(file_exists($poggitYml)){
     [$baseDir, $virions] = parsePoggitYml($poggitYml, "", $baseDir);
@@ -391,6 +421,6 @@ foreach($virions as $virion){
 
 echo "\n";
 echo "Building phar...\n";
-build_phar(RELEASE_DIR . "/$pluginName-v$pluginVersion.phar", $pluginYml);
+build_phar(RELEASE_DIR . "/$pluginName-v$pluginVersion.phar", $pluginYml, $ignoreFiles);
 echo "Done in " . round(microtime(true) - $start, 3) . "s";
 exit(0);
