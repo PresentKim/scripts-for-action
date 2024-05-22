@@ -83,7 +83,7 @@ function parsePoggitYml(string $poggitYmlPath, string $name, string $projectDir)
         exit(1);
     }
 
-    $projectPath = $project["path"] ?: ".";
+    $projectPath = $project["path"] ?? "." ?: ".";
     $projectDir = realpath($projectDir . "/" . $projectPath);
     $projectLibs = [];
     foreach($project["libs"] ?? [] as $lib){
